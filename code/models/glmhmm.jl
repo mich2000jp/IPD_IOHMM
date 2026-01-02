@@ -6,7 +6,6 @@
 
     # =====================================================
     # Priors 
-    mean_beta = zeros(K)
     sigma = 3.0
     beta0 ~ filldist(sigma * TDist(3), K)
     beta1 ~ filldist(sigma * TDist(3), K)

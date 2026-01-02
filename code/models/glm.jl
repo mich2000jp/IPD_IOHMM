@@ -6,9 +6,13 @@
 
     # =====================================================
     # Priors
-    sigma = 1.5
-    beta0 ~ Normal(0, sigma)
-    beta  ~ filldist(Normal(0, sigma), D)
+    sigma = 3.0
+    beta0 ~ sigma * TDist(3)
+    beta1 ~ sigma * TDist(3)
+    beta2 ~ sigma * TDist(3)
+    beta3 ~ sigma * TDist(3)
+    
+    beta = hcat(beta1, beta2, beta3)
 
     # =====================================================
     # Likelihood

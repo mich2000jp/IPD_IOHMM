@@ -24,7 +24,7 @@ function compute_transition_matrix(gamma0::Matrix{T}, gamma::Array{T,3}, x::Vect
             log_trans[k, j] = 0.0
             if k == j
             else
-                log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, :, idx, j), x)
+                log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, idx, j, :), x)
                 idx += 1
             end
         end
@@ -46,19 +46,19 @@ end
 
     # =====================================================
     # Priors
-    mean_beta = zeros(K)
-    param_init = ones(K)
+    sigma = 3.0
+    beta0 ~ filldist(sigma * TDist(3), K)
+    beta1 ~ filldist(sigma * TDist(3), K)
+    beta2 ~ filldist(sigma * TDist(3), K)
+    beta3 ~ filldist(sigma * TDist(3), K)
+    gamma0 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma1 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma2 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma3 ~ filldist(sigma * TDist(3), K-1, K)
+    init ~ Dirichlet(ones(K))
 
-    beta0 ~ MvNormal(mean_beta,2.25 * I)
-    beta1 ~ MvNormal(mean_beta,2.25 * I)
-    beta2 ~ MvNormal(mean_beta,2.25 * I)
-    beta3 ~ MvNormal(mean_beta,2.25 * I)
-    beta  = hcat(beta1, beta2, beta3)
-
-
-    gamma0 ~ filldist(Normal(0, 1.5), K-1, K)
-    gamma ~ filldist(Normal(0, 1.5), D, K-1, K)
-    init ~ Dirichlet(param_init)
+    beta = hcat(beta1, beta2, beta3) # [K x D]
+    gamma = cat(gamma1, gamma2, gamma3, dims = 3) # [(K-1) x K x D] 
     log_init = log.(init)
 
     # =====================================================
@@ -96,7 +96,7 @@ end
                     log_trans[k, j] = 0.0
                     if k == j
                     else
-                        log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, :, idx, j), x_trans)
+                        log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, idx, j, :), x_trans)
                         idx += 1
                     end 
                 end
@@ -169,18 +169,16 @@ end
 
     # =====================================================
     # Priors
-    mean_beta = zeros(K)
-    param_init = ones(K)
-    
-    beta0_raw ~ Bijectors.ordered(MvNormal(mean_beta, 2.25 * I))
-    beta0 = sort(beta0_raw)
+    sigma = 3.0
+    beta0 ~ filldist(sigma * TDist(3), K)
+    gamma0 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma1 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma2 ~ filldist(sigma * TDist(3), K-1, K)
+    gamma3 ~ filldist(sigma * TDist(3), K-1, K)
+    init ~ Dirichlet(ones(K))
 
-    gamma0 ~ filldist(Normal(0, 1.5), K-1, K)
-    gamma ~ filldist(Normal(0, 1.5), D, K-1, K)
-
-    init ~ Dirichlet(param_init)
+    gamma = cat(gamma1, gamma2, gamma3, dims = 3) # [(K-1) x K x D] 
     log_init = log.(init)
-
     # =====================================================
     # Likelihood
     Tp = eltype(beta0)
@@ -213,7 +211,7 @@ end
                     if k == j
                         log_trans[k, j] = 0.0
                     else
-                        log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, :, idx, j), x_trans)
+                        log_trans[k, j] = gamma0[idx, j] + dot(view(gamma, idx, j, :), x_trans)
                         idx += 1
                     end 
                 end
