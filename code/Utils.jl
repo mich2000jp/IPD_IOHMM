@@ -282,18 +282,20 @@ end
 
 
 # Post MCMC analysis: summary, PSIS-LOO, plots
-function RunPostAnalysis(model_gq, chain::Chains, K_states, POST_PATH)
-    SUMMARY_PATH = POST_PATH[1]
-    LOO_PATH     = POST_PATH[2]
-    PLOT_PATH     = POST_PATH[3]
-    PLOT_GQ_PATH  = POST_PATH[4]
+function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
+    SUMMARY_PATH  = OUTPUT_PATH[1]
+    LOO_PATH      = OUTPUT_PATH[2]
+    PLOT_PATH     = OUTPUT_PATH[3]
+    PLOT_GQ_PATH  = OUTPUT_PATH[4]
 
+    println("relabeling states...")
     chain_relabeled = relabel_chain(chain, K_states)
-    println("genarating quantities...")
-    gq = generated_quantities(model_gq, chain_relabeled)
-    chain_gq = convert_gq(gq)
 
-    println("Summarizing MCMC Results...")
+    println("generating quantities...")
+    gq = generated_quantities(model_gq, chain_relabeled)
+
+    chain_gq = convert_gq(gq)
+    println("summarizing results...")
     df_summary = DataFrame(summarystats(chain_relabeled))
     df_summary_gq = DataFrame(summarystats(chain_gq))
     df_hpd = DataFrame(MCMCChains.hpd(chain_relabeled, alpha=0.05))
@@ -313,16 +315,13 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, POST_PATH)
     println("PSIS-LOO Calculation...")
     loo = RunPSISLOO(model, chain_relabeled)
     df_loo =DataFrame(loo.estimates)
-    df_loo = unstack(df_loo,
-    :statistic,
-    :column,
-    :value
-    )
+    df_loo = unstack(df_loo, :statistic, :column, :value)
     CSV.write(LOO_PATH, df_loo)
-    display(loo)
 
-    println("Post Analysis Completed!")
+    println("All done!")
 end
+
+
 # Plot transition dynamics and state composition
 function plot_transition(all_states; title = "Transition Dynamics", figsize = (2000, 800))
     
