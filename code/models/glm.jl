@@ -35,23 +35,23 @@
     # =====================================================
     # Generated quantities
     if track
-        x_cc = [0.0, 0.0, 0.0]
-        x_cd = [0.0, 1.0, 0.0]
-        x_dc = [1.0, 0.0, 0.0]
-        x_dd = [1.0, 1.0, 1.0]
+        x_dd = [0.0, 0.0, 0.0]
+        x_dc = [0.0, 1.0, 0.0]
+        x_cd = [1.0, 0.0, 0.0]
+        x_cc = [1.0, 1.0, 1.0]
         
-        logit_cc = beta0 + dot(beta, x_cc)
-        logit_cd = beta0 + dot(beta, x_cd)
-        logit_dc = beta0 + dot(beta, x_dc)
         logit_dd = beta0 + dot(beta, x_dd)
+        logit_dc = beta0 + dot(beta, x_dc)
+        logit_cd = beta0 + dot(beta, x_cd)
+        logit_cc = beta0 + dot(beta, x_cc)
 
-        pcc = logistic(logit_cc)
-        pcd = logistic(logit_cd)
-        pdc = logistic(logit_dc)
         pdd = logistic(logit_dd)
+        pdc = logistic(logit_dc)
+        pcd = logistic(logit_cd)
+        pcc = logistic(logit_cc)
         
         return (;
-            pcc, pcd, pdc, pdd,
+            pdd, pdc, pcd, pcc
         )
     else
         return (; log_lik)

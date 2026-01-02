@@ -24,11 +24,11 @@ end
 # Overload getindex to access covariates by string key
 Base.getindex(data::ExperimentData, key::String) = data.covariates[key]
 
-# Function to map action (C,D) strings to numerical values (0,1)
+# Function to map action (C,D) strings to numerical values (1,0)
 # Missing values are mapped to 0.0
 function map_action(val::Union{String1, Missing})
         if ismissing(val) return 0.0 end
-        return val == "D" ? 1.0 : 0.0
+        return val == "D" ? 0.0 : 1.0
 end
 
 # Main data preparation function

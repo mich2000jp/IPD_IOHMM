@@ -50,107 +50,6 @@ function RunMCMC(SEED, model, K_states, sampler, n_iter, n_chains, n_burnin, out
     return chain
 end
 
-# Convert generated quantities to Chains format
-function convert_gq(gq)
-    # dimensions
-    n_iter, n_chains = size(gq)
-
-    # inspect one sample
-    sample = gq[1, 1]
-    fields = fieldnames(typeof(sample))
-
-    # ---------- パラメータ名生成 ----------
-    param_names = String[]
-
-    function names_for_field(fname::Symbol, val)
-        if isa(val, Number)
-            return [string(fname)]
-        elseif isa(val, AbstractVector)
-            return [string(fname, "[", i, "]") for i in eachindex(val)]
-        elseif isa(val, AbstractMatrix)
-            return [
-                string(fname, "[", i, ",", j, "]")
-                for i in axes(val, 1), j in axes(val, 2)
-            ]
-        else
-            error("Unsupported parameter type for $fname: $(typeof(val))")
-        end
-    end
-
-    for f in fields
-        append!(param_names, names_for_field(f, getfield(sample, f)))
-    end
-
-    n_params = length(param_names)
-    chains_3d = Array{Float64,3}(undef, n_iter, n_params, n_chains)
-
-    # ---------- 値の収集 ----------
-    function collect_values(val)
-        if isa(val, Number)
-            return Float64[val]
-        elseif isa(val, AbstractVector)
-            return Float64.(val)
-        elseif isa(val, AbstractMatrix)
-            return Float64.(vec(val))
-        else
-            error("Unsupported parameter type: $(typeof(val))")
-        end
-    end
-
-    for ch in 1:n_chains
-        for it in 1:n_iter
-            s = gq[it, ch]
-            collected = Float64[]
-
-            for f in fields
-                append!(collected, collect_values(getfield(s, f)))
-            end
-
-            chains_3d[it, :, ch] .= collected
-        end
-    end
-
-    return Chains(chains_3d, Symbol.(param_names))
-end
-
-# Convert generated quantities to log-likelihood array for PSIS-LOO
-function gq_to_loglik_array(gq)
-    n_iter, n_chains = size(gq)
-    N = length(gq[1,1].log_lik)
-
-    loglik = Array{Float64}(undef, N, n_iter, n_chains)
-
-    for ch in 1:n_chains
-        for it in 1:n_iter
-            loglik[:, it, ch] .= gq[it, ch].log_lik
-        end
-    end
-    return loglik
-end
-
-# Run PSIS-LOOCV and report pareto k diagnostics
-function RunPSISLOO(model, chain)
-    gq = generated_quantities(model, chain)
-    log_lik = gq_to_loglik_array(gq)
-    psis_result = psis_loo(log_lik)
-    
-    pareto_k = psis_result.pointwise(statistic = :pareto_k) |> collect
-    bad_ids = findall(>(0.7), pareto_k)
-    n_bad = length(bad_ids)
-
-    if n_bad == 0
-        println("All subjects have pareto k ≤ 0.7.")
-    else
-        println("There are $n_bad subjects with pareto k > 0.7.")
-        println("Subject IDs = ", bad_ids)
-        for i in bad_ids
-            println("Subject ", i, ": pareto k = ", pareto_k[i])
-        end
-    end
-    
-    return psis_result 
-end
-
 # Relabel MCMC chain to address label switching, based on 'init' parameter
 function relabel_chain(chain, K::Int=2)
     if K <= 1
@@ -276,6 +175,111 @@ function relabel_chain(chain, K::Int=2)
     return new_chain
 end
 
+# Convert generated quantities to Chains format
+function convert_gq(gq)
+    # dimensions
+    n_iter, n_chains = size(gq)
+
+    # inspect one sample
+    sample = gq[1, 1]
+    fields = fieldnames(typeof(sample))
+
+    # ---------- パラメータ名生成 ----------
+    param_names = String[]
+
+    function names_for_field(fname::Symbol, val)
+        if isa(val, Number)
+            return [string(fname)]
+        elseif isa(val, AbstractVector)
+            return [string(fname, "[", i, "]") for i in eachindex(val)]
+        elseif isa(val, AbstractMatrix)
+            return [
+                string(fname, "[", i, ",", j, "]")
+                for i in axes(val, 1), j in axes(val, 2)
+            ]
+        else
+            error("Unsupported parameter type for $fname: $(typeof(val))")
+        end
+    end
+
+    for f in fields
+        append!(param_names, names_for_field(f, getfield(sample, f)))
+    end
+
+    n_params = length(param_names)
+    chains_3d = Array{Float64,3}(undef, n_iter, n_params, n_chains)
+
+    # ---------- 値の収集 ----------
+    function collect_values(val)
+        if isa(val, Number)
+            return Float64[val]
+        elseif isa(val, AbstractVector)
+            return Float64.(val)
+        elseif isa(val, AbstractMatrix)
+            return Float64.(vec(val))
+        else
+            error("Unsupported parameter type: $(typeof(val))")
+        end
+    end
+
+    for ch in 1:n_chains
+        for it in 1:n_iter
+            s = gq[it, ch]
+            collected = Float64[]
+
+            for f in fields
+                append!(collected, collect_values(getfield(s, f)))
+            end
+
+            chains_3d[it, :, ch] .= collected
+        end
+    end
+
+    return Chains(chains_3d, Symbol.(param_names))
+end
+
+# Convert generated quantities to log-likelihood array for PSIS-LOO
+function gq_to_loglik_array(gq)
+    n_iter, n_chains = size(gq)
+    N = length(gq[1,1].log_lik)
+
+    loglik = Array{Float64}(undef, N, n_iter, n_chains)
+
+    for ch in 1:n_chains
+        for it in 1:n_iter
+            loglik[:, it, ch] .= gq[it, ch].log_lik
+        end
+    end
+    return loglik
+end
+
+# Run PSIS-LOOCV and report pareto k diagnostics
+function RunPSISLOO(model, chain)
+    gq = generated_quantities(model, chain)
+    log_lik = gq_to_loglik_array(gq)
+    psis_result = psis_loo(log_lik)
+    
+    pareto_k = psis_result.pointwise(statistic = :pareto_k) |> collect
+    bad_ids_07 = findall(>(0.7), pareto_k)
+    bad_ids = findall(>(0.5), pareto_k)
+    n_bad_07 = length(bad_ids_07)
+    n_bad = length(bad_ids)
+    n_bad_05 = n_bad - n_bad_07
+
+    if n_bad == 0
+        println("All subjects have pareto k ≤ 0.5.")
+    else
+        println("There are $n_bad_07 subjects with pareto k > 0.7, and $n_bad_05 subjects with 0.5 < pareto k ≤ 0.7.")
+        for i in bad_ids
+            println("Subject ", i, ": pareto k = ", pareto_k[i])
+        end
+    end
+    
+    return psis_result 
+end
+
+
+
 
 # Post MCMC analysis: summary, PSIS-LOO, plots
 function RunPostAnalysis(model_gq, chain::Chains, K_states, POST_PATH)
@@ -319,31 +323,6 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, POST_PATH)
 
     println("Post Analysis Completed!")
 end
-
-# Check and print parameter names in the chain
-function check_parameter_names(chain::Chains)
-    param_names = names(chain)
-    
-    println("Total parameters: ", length(param_names))
-    println("\nParameter names:")
-    for name in param_names
-        println("  ", name)
-    end
-    
-    # パターン別にグループ化
-    beta0_params = filter(n -> occursin("beta0", string(n)), param_names)
-    beta_params = filter(n -> occursin(r"^beta\[", string(n)), param_names)
-    a_raw_params = filter(n -> occursin("a_raw", string(n)), param_names)
-    gamma_params = filter(n -> occursin("gamma", string(n)), param_names)
-    init_params = filter(n -> occursin("init", string(n)), param_names)
-    
-    println("\nbeta0 parameters (", length(beta0_params), "): ", beta0_params)
-    println("beta parameters (", length(beta_params), "): ", beta_params[1:min(5, length(beta_params))])
-    println("a_raw parameters (", length(a_raw_params), "): ", a_raw_params)
-    println("gamma parameters (", length(gamma_params), "): ", gamma_params)
-    println("init parameters (", length(init_params), "): ", init_params)
-end
-
 # Plot transition dynamics and state composition
 function plot_transition(all_states; title = "Transition Dynamics", figsize = (2000, 800))
     
@@ -474,141 +453,3 @@ function plot_transition(all_states; title = "Transition Dynamics", figsize = (2
 
     return p
 end
-
-# # Plot transition dynamics and state composition (generalized for K states)
-# function plot_transition2(all_states; title_prefix = "Transition Dynamics", figsize = (2000, 800))
-    
-#     # -------------------------------------------------------
-#     # 1. データの前処理: 次元の確認と代表値(mode)の計算
-#     # -------------------------------------------------------
-#     if ndims(all_states) == 3
-#         N, T_len, n_samples = size(all_states)
-#         states_mat = Matrix{Int}(undef, N, T_len)
-#         for i in 1:N
-#             for t in 1:T_len
-#                 states_mat[i, t] = mode(view(all_states, i, t, :))
-#             end
-#         end
-#     else
-#         N, T_len = size(all_states)
-#         states_mat = all_states
-#     end
-
-#     # -------------------------------------------------------
-#     # 2. 状態数の自動検出
-#     # -------------------------------------------------------
-#     K = maximum(states_mat)  # 状態数
-    
-#     # -------------------------------------------------------
-#     # 3. 集計処理
-#     # -------------------------------------------------------
-#     # 遷移カウント: transition_counts[t, from_state, to_state]
-#     transition_counts = zeros(Int, T_len - 1, K, K)
-    
-#     for t in 1:(T_len - 1)
-#         for i in 1:N
-#             s_curr = states_mat[i, t]
-#             s_next = states_mat[i, t+1]
-#             transition_counts[t, s_curr, s_next] += 1
-#         end
-#     end
-    
-#     # 各時点における各状態の人数
-#     state_counts = zeros(Int, T_len, K)
-#     for t in 1:T_len
-#         for i in 1:N
-#             state_counts[t, states_mat[i, t]] += 1
-#         end
-#     end
-    
-#     # 割合に変換
-#     state_ratios = state_counts ./ N
-    
-#     # -------------------------------------------------------
-#     # 4. 時間軸の設定
-#     # -------------------------------------------------------
-#     start_period = 2
-#     periods_trans = start_period:(start_period + T_len - 2)
-#     periods_full = start_period:(start_period + T_len - 1)
-    
-#     x_min = minimum(periods_full)
-#     x_max = maximum(periods_full)
-#     tick_values = unique(sort([x_min; collect(5:5:x_max)]))
-    
-#     # -------------------------------------------------------
-#     # 5. プロット1: 遷移カウント (すべての組み合わせ)
-#     # -------------------------------------------------------
-#     # 異なる状態への遷移のみをカウント (i != j)
-#     transitions_list = []
-#     for i in 1:K
-#         for j in 1:K
-#             if i != j
-#                 push!(transitions_list, (i, j))
-#             end
-#         end
-#     end
-    
-#     n_transitions = length(transitions_list)
-    
-#     # バーのオフセット自動計算
-#     bar_w = 0.8 / n_transitions  # 全体の幅を0.8として均等分割
-#     offsets = range(-0.4, 0.4, length=n_transitions)
-    
-#     # 色の設定 (状態数に応じて自動生成)
-#     colors = [:skyblue, :orange, :green, :purple, :pink, :brown, :gray, :yellow]
-    
-#     p1 = plot(size = figsize, 
-#              title = "$title_prefix - Transition Counts",
-#              titlefontsize = 12,
-#              xlabel = "Round",
-#              ylabel = "Number of Transitions",
-#              legend = :topleft,
-#              ylims = (0, 18),
-#              grid = false,
-#              margin = 10Plots.mm,
-#              xticks = tick_values)
-    
-#     for (idx, (from_state, to_state)) in enumerate(transitions_list)
-#         counts = transition_counts[:, from_state, to_state]
-#         bar!(p1, periods_trans .+ offsets[idx], counts,
-#              label = "Transition: $from_state → $to_state",
-#              color = colors[mod(idx-1, length(colors)) + 1],
-#              alpha = 0.7,
-#              bar_width = bar_w)
-#     end
-    
-#     # -------------------------------------------------------
-#     # 6. プロット2: 状態割合の積み重ねバープロット
-#     # -------------------------------------------------------
-#     p2 = plot(size = figsize,
-#              title = "$title_prefix - State Composition Over Time",
-#              titlefontsize = 12,
-#              xlabel = "Round",
-#              ylabel = "Proportion of States",
-#              legend = :topright,
-#              ylims = (0, 1.05),
-#              grid = false,
-#              margin = 10Plots.mm,
-#              xticks = tick_values)
-    
-#     # 積み重ねバープロット (累積和を使って手動で積み重ね)
-#     cumsum_bottom = zeros(T_len)
-#     for k in 1:K
-#         # 現在の状態の上端 = 底辺 + 高さ
-#         cumsum_top = cumsum_bottom .+ state_ratios[:, k]
-        
-#         bar!(p2, periods_full, cumsum_top,
-#              label = "State $k",
-#              color = colors[k],
-#              alpha = 0.7,
-#              bar_width = 0.8,
-#              fillrange = cumsum_bottom,
-#              linecolor = :white,
-#              linewidth = 0.5)
-        
-#         # 次の状態の底辺を更新
-#         cumsum_bottom .= cumsum_top
-#     end
-    
-#     return p1, p2
-# end

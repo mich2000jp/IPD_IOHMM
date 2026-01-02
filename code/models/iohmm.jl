@@ -50,8 +50,7 @@ end
     param_init = ones(K)
 
     beta0 ~ MvNormal(mean_beta,2.25 * I)
-    beta1_raw ~ MvNormal(mean_beta,2.25 * I)
-    beta1 = sort(beta1_raw)
+    beta1 ~ MvNormal(mean_beta,2.25 * I)
     beta2 ~ MvNormal(mean_beta,2.25 * I)
     beta3 ~ MvNormal(mean_beta,2.25 * I)
     beta  = hcat(beta1, beta2, beta3)
@@ -132,31 +131,30 @@ end
 
     # =====================================================
     # Generated quantities
-    if track        
-        x_cc = [0.0, 0.0, 0.0]
-        x_cd = [0.0, 1.0, 0.0]
-        x_dc = [1.0, 0.0, 0.0]
-        x_dd = [1.0, 1.0, 1.0]
+    if track
+        x_dd = [0.0, 0.0, 0.0]
+        x_dc = [0.0, 1.0, 0.0]
+        x_cd = [1.0, 0.0, 0.0]
+        x_cc = [1.0, 1.0, 1.0]
         
-        logit_cc = beta0 .+ beta * x_cc
-        logit_cd = beta0 .+ beta * x_cd
-        logit_dc = beta0 .+ beta * x_dc
         logit_dd = beta0 .+ beta * x_dd
+        logit_dc = beta0 .+ beta * x_dc
+        logit_cd = beta0 .+ beta * x_cd
+        logit_cc = beta0 .+ beta * x_cc
 
-        pcc = logistic.(logit_cc)
-        pcd = logistic.(logit_cd)
-        pdc = logistic.(logit_dc)
         pdd = logistic.(logit_dd)
+        pdc = logistic.(logit_dc)
+        pcd = logistic.(logit_cd)
+        pcc = logistic.(logit_cc)
 
-        trans_cc = compute_transition_matrix(gamma0, gamma, x_cc, K)
-        trans_cd = compute_transition_matrix(gamma0, gamma, x_cd, K)
-        trans_dc = compute_transition_matrix(gamma0, gamma, x_dc, K)
         trans_dd = compute_transition_matrix(gamma0, gamma, x_dd, K)
+        trans_dc = compute_transition_matrix(gamma0, gamma, x_dc, K)
+        trans_cd = compute_transition_matrix(gamma0, gamma, x_cd, K)
+        trans_cc = compute_transition_matrix(gamma0, gamma, x_cc, K)
         
         return (;
-            pcc, pcd, pdc, pdd,
-            trans_cc, trans_cd, trans_dc, trans_dd,
-            beta0
+            pdd, pdc, pcd, pcc,
+            trans_dd, trans_dc, trans_cd, trans_cc
         )
     else
         return (; log_lik)
@@ -246,24 +244,23 @@ end
 
     # =====================================================
     # Generated quantities
+    # Generated quantities
     if track
-
-        x_cc = [0.0, 0.0, 0.0]
-        x_cd = [0.0, 1.0, 0.0]
-        x_dc = [1.0, 0.0, 0.0]
-        x_dd = [1.0, 1.0, 1.0]
+        x_dd = [0.0, 0.0, 0.0]
+        x_dc = [0.0, 1.0, 0.0]
+        x_cd = [1.0, 0.0, 0.0]
+        x_cc = [1.0, 1.0, 1.0]
 
         p = logistic.(beta0)
 
-        trans_cc = compute_transition_matrix(gamma0, gamma, x_cc, K)
-        trans_cd = compute_transition_matrix(gamma0, gamma, x_cd, K)
-        trans_dc = compute_transition_matrix(gamma0, gamma, x_dc, K)
         trans_dd = compute_transition_matrix(gamma0, gamma, x_dd, K)
+        trans_dc = compute_transition_matrix(gamma0, gamma, x_dc, K)
+        trans_cd = compute_transition_matrix(gamma0, gamma, x_cd, K)
+        trans_cc = compute_transition_matrix(gamma0, gamma, x_cc, K)
         
         return (;
             p,
-            trans_cc, trans_cd, trans_dc, trans_dd,
-            beta1
+            trans_dd, trans_dc, trans_cd, trans_cc
         )
     else
         return (; log_lik)
