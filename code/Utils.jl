@@ -284,7 +284,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, POST_PATH)
     PLOT_PATH     = POST_PATH[3]
     PLOT_GQ_PATH  = POST_PATH[4]
 
-    chain_relabeled = chain
+    chain_relabeled = relabel_chain(chain, K_states)
     println("genarating quantities...")
     gq = generated_quantities(model_gq, chain_relabeled)
     chain_gq = convert_gq(gq)

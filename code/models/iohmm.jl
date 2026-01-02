@@ -49,9 +49,13 @@ end
     mean_beta = zeros(K)
     param_init = ones(K)
 
-    beta0_raw ~ MvNormal(mean_beta, 2.25 * I)
-    beta0 = sort(beta0_raw)
-    beta  ~ filldist(Normal(0, 1.5), D, K)
+    beta0 ~ MvNormal(mean_beta,2.25 * I)
+    beta1_raw ~ MvNormal(mean_beta,2.25 * I)
+    beta1 = sort(beta1_raw)
+    beta2 ~ MvNormal(mean_beta,2.25 * I)
+    beta3 ~ MvNormal(mean_beta,2.25 * I)
+    beta  = hcat(beta1, beta2, beta3)
+
 
     gamma0 ~ filldist(Normal(0, 1.5), K-1, K)
     gamma ~ filldist(Normal(0, 1.5), D, K-1, K)
@@ -73,7 +77,7 @@ end
         X_seq = data.covariates[i]
 
         # t = 1: 
-        mul!(logits, beta', view(X_seq, 1, :))
+        mul!(logits, beta, view(X_seq, 1, :))
         @inbounds for k in 1:K
             logits[k] += beta0[k]
             le = y_seq[1] == 1 ?
@@ -104,7 +108,7 @@ end
                 end
             end
             
-            mul!(logits, beta', view(X_seq, t, :))
+            mul!(logits, beta, view(X_seq, t, :))
             @simd for k in 1:K
                 logits[k] += beta0[k]
             end
@@ -134,10 +138,10 @@ end
         x_dc = [1.0, 0.0, 0.0]
         x_dd = [1.0, 1.0, 1.0]
         
-        logit_cc = beta0 .+ beta' * x_cc
-        logit_cd = beta0 .+ beta' * x_cd
-        logit_dc = beta0 .+ beta' * x_dc
-        logit_dd = beta0 .+ beta' * x_dd
+        logit_cc = beta0 .+ beta * x_cc
+        logit_cd = beta0 .+ beta * x_cd
+        logit_dc = beta0 .+ beta * x_dc
+        logit_dd = beta0 .+ beta * x_dd
 
         pcc = logistic.(logit_cc)
         pcd = logistic.(logit_cd)
@@ -259,7 +263,7 @@ end
         return (;
             p,
             trans_cc, trans_cd, trans_dc, trans_dd,
-            beta0
+            beta1
         )
     else
         return (; log_lik)
