@@ -122,7 +122,8 @@ function relabel_chain(chain, K::Int=2)
                     if !isnothing(old_idx)
                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
                     end
-                # trans[from, to], gamma0[from, to]
+
+                # trans[from, to], gammaX[from, to]
                 elseif base_name == "trans"
                     old_i = inv_perm[i]
                     old_j = inv_perm[j]
@@ -132,7 +133,7 @@ function relabel_chain(chain, K::Int=2)
                     if !isnothing(old_idx)
                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
                     end
-                elseif base_name == "gamma0"
+                elseif base_name in ["gamma0", "gamma1", "gamma2", "gamma3"]
                     old_i = i
                     old_j = inv_perm[j]
                     old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
@@ -144,26 +145,6 @@ function relabel_chain(chain, K::Int=2)
                 end
             end
 
-            # 3-d parameters: gamma[d, from, to]
-            m = match(r"^(\w+)\[(\d+), \s*(\d+), \s*(\d+)\]$", param_str)
-            if !isnothing(m)
-                base_name = m.captures[1]
-                d = parse(Int, m.captures[2])
-                i = parse(Int, m.captures[3])
-                j = parse(Int, m.captures[4])
-                
-                if base_name == "gamma" 
-                    old_d = d
-                    old_i = i
-                    old_j = inv_perm[j]
-                    old_param_name = Symbol("$(base_name)[$old_d, $old_i, $old_j]")
-                    old_idx = findfirst(==(old_param_name), param_names)
-                    
-                    if !isnothing(old_idx)
-                        relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
-                    end
-                end
-            end
         end
     end
     new_chain = Chains(
@@ -278,8 +259,18 @@ function RunPSISLOO(model, chain)
     return psis_result 
 end
 
-
-
+function posterior_plot(chain, K)
+    namev = names(chain, :parameters)
+    plots = []
+    for i in 1:length(namev)
+        p1 = plot(chain[:, namev[i],:],title=namev[i],legend=false, yticks=false)
+        p2 = plot(chain[:, namev[i],:], seriestype=:density, title=namev[i],legend=false, yticks=false)
+        p = plot(p1, p2, layout=(1,2), margin=1Plots.mm)
+        push!(plots, p)
+    end
+    p = plot(plots..., layout=(length(plots) ÷ K, K), size=(1000*K, 150*length(plots)))
+    return p
+end
 
 # Post MCMC analysis: summary, PSIS-LOO, plots
 function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
@@ -307,8 +298,8 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     CSV.write(SUMMARY_PATH, df_stacked)
 
     println("Plotting MCMC Results...")
-    p1 = plot(chain_relabeled)
-    p2 = plot(chain_gq)
+    p1 = posterior_plot(chain_relabeled, K_states)
+    p2 = posterior_plot(chain_gq, K_states)
     savefig(p1, PLOT_PATH)
     savefig(p2, PLOT_GQ_PATH)
 
@@ -321,134 +312,190 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     println("All done!")
 end
 
+# Plot player context sequence
+function plot_player_context(data::ExperimentData, player_id::Int)
 
-# Plot transition dynamics and state composition
-function plot_transition(all_states; title = "Transition Dynamics", figsize = (2000, 800))
+    cont_seq = data.contexts[player_id]
+    levels = ["CCC", "CCD", "CDC", "CDD", "DCC", "DCD", "DDC", "DDD"]
+    map_context = Dict(l => i for (i, l) in enumerate(levels))
+    y = [map_context[c] for c in cont_seq]
     
-    # -------------------------------------------------------
-    # 1. データの前処理: 次元の確認と代表値(mode)の計算
-    # -------------------------------------------------------
-    if ndims(all_states) == 3
-        N, T_len, n_samples = size(all_states)
-        # 各被験者・各時点での最頻値（MAP推定値）を計算
-        states_mat = Matrix{Int}(undef, N, T_len)
-        for i in 1:N
-            for t in 1:T_len
-                # viewを使ってメモリ効率よく最頻値を計算
-                states_mat[i, t] = mode(view(all_states, i, t, :))
-            end
-        end
-    else
-        # 既に (N, T) の形式の場合
-        N, T_len = size(all_states)
-        states_mat = all_states
-    end
+    T = length(y)
+
+    p = plot(
+        2:(T+1),
+        y;
+        seriestype = :step,
+        linewidth = 2,
+        legend = false,
+        xlabel = "Round",
+        ylabel = "Context",
+        xlims = (2, T+1),
+        ylims = (0.5, length(levels) + 0.5),
+        yticks = (1:length(levels), string.(levels)),
+        title = "Context experience of Player $player_id",
+        margin = 5Plots.mm,
+        size = (900, 500)
+    )
+
+    return p
+end
+
+# Plot ratio of context 
+function plot_context_ratio(data::ExperimentData; title = "Context Ratio over Rounds")
+    N = data.n_subjects
+    T = data.n_periods
+
+    levels = ["CCC", "CDC", "DCC", "DDC", "CCD", "CDD", "DCD", "DDD"]
+    n_levels = length(levels)
+    map_context = Dict(l => i for (i, l) in enumerate(levels))
 
     # -------------------------------------------------------
-    # 2. 集計処理
+    # 1. 集計
     # -------------------------------------------------------
-    # 期間 t (1 ~ T-1) における遷移数をカウント
-    # count_1to2[t]: 時点 t で State 1 だった人が、t+1 で State 2 になった数
-    count_1to2 = zeros(Int, T_len - 1)
-    count_2to1 = zeros(Int, T_len - 1)
-    
-    # 各時点 t における State 1 の割合
-    ratio_state1 = zeros(Float64, T_len)
-
-    # State 1 の割合を計算 (t=1...T)
-    for t in 1:T_len
-        # State 1 (または0) の定義に依存するが、ここではラベルが 1, 2 と仮定
-        # もし 0, 1 なら適宜読み替えるが、通常HMMのラベルは 1, 2... K
-        # 最小値を確認して調整
-        current_states = view(states_mat, :, t)
-        
-        # State 1 の人数をカウント (ラベルが1の場合)
-        # ※ viterbiの出力が1-based index (1, 2) であることを想定
-        n_state1 = count(x -> x == 1, current_states)
-        ratio_state1[t] = n_state1 / N
-    end
-
-    # 遷移数を計算 (t=1...T-1)
-    for t in 1:(T_len - 1)
-        for i in 1:N
-            s_curr = states_mat[i, t]
-            s_next = states_mat[i, t+1]
-            
-            if s_curr == 1 && s_next == 2
-                count_1to2[t] += 1
-            elseif s_curr == 2 && s_next == 1
-                count_2to1[t] += 1
-            end
+    context_counts = zeros(Int, n_levels, T)
+    for i in 1:N
+        cont_seq = data.contexts[i]
+        for t in 1:T
+            context_counts[map_context[cont_seq[t]], t] += 1
         end
     end
 
+    context_ratios = context_counts ./ N   # (n_levels × T)
+
     # -------------------------------------------------------
-    # 3. プロット作成 (2軸グラフ)
+    # 2. プロット設定
     # -------------------------------------------------------
-    # 時間軸の調整
-    # データがピリオド2から始まるとのことなので、全体を+1シフトして表示
-    start_period = 2
-    
-    # 遷移データ用のX軸 (長さ: T_len - 1)
-    # データ上の t=1 -> t=2 の遷移を、プロット上では start_period -> start_period+1 として扱う
-    periods_trans = start_period:(start_period + T_len - 2)
-    
-    # 状態比率用のX軸 (長さ: T_len)
-    periods_full = start_period:(start_period + T_len - 1)
 
-    # 横軸ラベル(xticks)の設定: 2, 5, 10, 15... の形式にする
-    # 範囲の最小値から最大値まで
-    x_min = minimum(periods_full)
-    x_max = maximum(periods_full)
-    
-    # 開始点(2)と、5刻みの値(5, 10, 15...)を結合してソート・ユニーク化
-    # これにより [2, 5, 10, 15, ..., 100] のような並びになります
-    tick_values = unique(sort([x_min; collect(5:5:x_max)]))
+    p = plot(
+        size = (900, 500),
+        title = title,
+        xlabel = "Round",
+        ylabel = "Context Ratio",
+        ylims = (0, 1.05),
+        xlims = (2, T+1),
+        legend = :outerbottom,
+        legend_columns = 8,
+        palette = :Spectral_8,
+        grid = false,
+        margin = 5Plots.mm
+    )
 
-    # --- 左軸: 遷移数 (Bar Chart) ---
-    p = plot(size = figsize, 
-             title = title, 
-             titlefontsize = 12,
-             xlabel = "Round",
-             legend = :topleft,
-             ylims = (0,18),
-             grid = false,
-             margin = 10Plots.mm)
+    # -------------------------------------------------------
+    # 3. 積み重ねバー（累積和方式）
+    # -------------------------------------------------------
+    cumsum_bottom = zeros(T)
 
-    # バーの位置調整用設定
-    # X軸上で重ならないように、それぞれのバーを左右に少しずらします。
-    bar_w = 0.3        # バーの幅
-    offset = 0.35      # 中心からのずらし幅
+    for k in 1:n_levels
+        cumsum_top = cumsum_bottom .+ context_ratios[k, :]
 
-    # State 1 -> 2 の遷移 (左にずらす: periods_trans .- offset)
-    bar!(p, periods_trans .- offset, count_1to2, 
-         label = "Transition: 1 -> 2", 
-         color = :skyblue, 
-         alpha = 0.7,
-         ylabel = "Number of Transitions (Count)",
-         bar_width = bar_w,
-         xticks = tick_values) # 指定したラベルを適用
+        bar!(
+            p,
+            2:(T+1),
+            cumsum_top;
+            fillrange = cumsum_bottom,
+            label = levels[k],
+            alpha = 0.7,
+            bar_width = 0.8,
+            linecolor = :white,
+            linewidth = 0.5
+        )
 
-    # State 2 -> 1 の遷移 (右にずらす: periods_trans .+ offset)
-    bar!(p, periods_trans .+ offset, count_2to1, 
-         label = "Transition: 2 -> 1", 
-         color = :orange, 
-         alpha = 0.6,
-         bar_width = bar_w)
+        cumsum_bottom .= cumsum_top
+    end
 
-    # --- 右軸: State 1 の割合 (Line Chart) ---
-    # twinx() を使って右軸を作成
-    p_twin = twinx(p)
-    
-    plot!(p_twin, periods_full, ratio_state1,
-          label = "Ratio of State 1",
-          color = :red,
-          linewidth = 3,
-          linestyle = :solid,
-          ylabel = "Ratio of State 1",
-          ylims = (0.0, 1.05), # 割合なので0-1
-          legend = :topright,
-          grid = false) # グリッドが重なると見にくいのでOFF
+    return p
+end
+
+# Plot cooporation rate over rounds
+function plot_cooperation_rate(data::ExperimentData; title = "Cooperation Rate over Rounds")
+    N = data.n_subjects
+    T = data.n_periods
+
+    coop_counts = zeros(T)
+    total_counts = zeros(T)
+
+    for i in 1:N
+        y_seq = data.observations[i]
+        for t in 1:T
+            if y_seq[t] == 1
+                coop_counts[t] += 1
+            end
+            total_counts[t] += 1
+        end
+    end
+
+    coop_rates = coop_counts ./ total_counts
+
+    p = plot(
+        1:T,
+        coop_rates;
+        seriestype = :line,
+        linewidth = 2,
+        legend = false,
+        xlabel = "Round",
+        ylabel = "Cooperation Rate",
+        ylims = (0, 1),
+        xlims = (1, T),
+        fill = (0, 0.15, :auto),
+        title = title,
+        size = (900, 500),
+        margin = 5Plots.mm
+    )
+
+    return p
+end
+
+function plot_conditional_coop(data::ExperimentData;
+                               title = "P(C | XX) over Rounds")
+    N = data.n_subjects
+    T = data.n_periods
+
+    histories = ["CC", "CD", "DC", "DD"]
+    n_hist = length(histories)
+    map_hist = Dict(h => i for (i, h) in enumerate(histories))
+
+    counts_C = zeros(Int, n_hist, T)
+    counts_D = zeros(Int, n_hist, T)
+
+    for i in 1:N
+        cont_seq = data.contexts[i]   # e.g. "CCC", "CDD", ...
+        for t in 1:T
+            xx = cont_seq[t][1:2]
+            idx = map_hist[xx]
+            if cont_seq[t][3] == 'C'
+                counts_C[idx, t] += 1
+            else
+                counts_D[idx, t] += 1
+            end
+        end
+    end
+
+    ratio = counts_C ./ (counts_C .+ counts_D)   # (4 × T)
+
+    p = plot(
+        xlabel = "Round",
+        ylabel = "P(C | XX)",
+        title = title,
+        ylims = (0, 1),
+        xlims = (2, T+1),
+        palette = :Spectral_4,
+        legend = :outerbottom,
+        legend_columns = 4,
+        size = (900, 500),
+        margin = 5Plots.mm
+    )
+
+    for i in 1:n_hist
+        plot!(
+            p,
+            2:(T+1),
+            ratio[i, :];
+            label = histories[i],
+            linewidth = 2,
+            fill = (0, 0.15, :auto)
+        )
+    end
 
     return p
 end

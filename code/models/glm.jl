@@ -6,11 +6,10 @@
 
     # =====================================================
     # Priors
-    sigma = 3.0
-    beta0 ~ sigma * TDist(3)
-    beta1 ~ sigma * TDist(3)
-    beta2 ~ sigma * TDist(3)
-    beta3 ~ sigma * TDist(3)
+    beta0 ~ Normal(0, 1.5)
+    beta1 ~ Normal(0, 1.5)
+    beta2 ~ Normal(0, 1.5)
+    beta3 ~ Normal(0, 1.5)
     
     beta = hcat(beta1, beta2, beta3)
 

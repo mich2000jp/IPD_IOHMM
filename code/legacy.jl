@@ -1732,8 +1732,6 @@ function plot_transition2(all_states; title_prefix = "Transition Dynamics", figs
     bar_w = 0.8 / n_transitions  # 全体の幅を0.8として均等分割
     offsets = range(-0.4, 0.4, length=n_transitions)
     
-    # 色の設定 (状態数に応じて自動生成)
-    colors = [:skyblue, :orange, :green, :purple, :pink, :brown, :gray, :yellow]
     
     p1 = plot(size = figsize, 
              title = "$title_prefix - Transition Counts",
@@ -1766,6 +1764,7 @@ function plot_transition2(all_states; title_prefix = "Transition Dynamics", figs
              legend = :topright,
              ylims = (0, 1.05),
              grid = false,
+             palette = :tab10,
              margin = 10Plots.mm,
              xticks = tick_values)
     
@@ -1777,7 +1776,6 @@ function plot_transition2(all_states; title_prefix = "Transition Dynamics", figs
         
         bar!(p2, periods_full, cumsum_top,
              label = "State $k",
-             color = colors[k],
              alpha = 0.7,
              bar_width = 0.8,
              fillrange = cumsum_bottom,

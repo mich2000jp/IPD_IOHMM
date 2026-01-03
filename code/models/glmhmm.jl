@@ -6,12 +6,11 @@
 
     # =====================================================
     # Priors 
-    sigma = 3.0
-    beta0 ~ filldist(sigma * TDist(3), K)
-    beta1 ~ filldist(sigma * TDist(3), K)
-    beta2 ~ filldist(sigma * TDist(3), K)
-    beta3 ~ filldist(sigma * TDist(3), K)
-    trans ~ filldist(Dirichlet(K, 1.0), K)
+    beta0 ~ filldist(Normal(0, 1.5), K)
+    beta1 ~ filldist(Normal(0, 1.5), K)
+    beta2 ~ filldist(Normal(0, 1.5), K)
+    beta3 ~ filldist(Normal(0, 1.5), K)
+    trans ~ filldist(Dirichlet(K, 1.5), K)
     init ~ Dirichlet(ones(K))
 
     beta = hcat(beta1, beta2, beta3)

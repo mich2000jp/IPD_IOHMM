@@ -46,15 +46,14 @@ end
 
     # =====================================================
     # Priors
-    sigma = 3.0
-    beta0 ~ filldist(sigma * TDist(3), K)
-    beta1 ~ filldist(sigma * TDist(3), K)
-    beta2 ~ filldist(sigma * TDist(3), K)
-    beta3 ~ filldist(sigma * TDist(3), K)
-    gamma0 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma1 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma2 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma3 ~ filldist(sigma * TDist(3), K-1, K)
+    beta0 ~ filldist(Normal(0, 1.5), K)
+    beta1 ~ filldist(Normal(0, 1.5), K)
+    beta2 ~ filldist(Normal(0, 1.5), K)
+    beta3 ~ filldist(Normal(0, 1.5), K)
+    gamma0 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma1 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma2 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma3 ~ filldist(Normal(0, 1.5), K-1, K)
     init ~ Dirichlet(ones(K))
 
     beta = hcat(beta1, beta2, beta3) # [K x D]
@@ -169,12 +168,11 @@ end
 
     # =====================================================
     # Priors
-    sigma = 3.0
-    beta0 ~ filldist(sigma * TDist(3), K)
-    gamma0 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma1 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma2 ~ filldist(sigma * TDist(3), K-1, K)
-    gamma3 ~ filldist(sigma * TDist(3), K-1, K)
+    beta0 ~ filldist(Normal(0, 1.5), K)
+    gamma0 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma1 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma2 ~ filldist(Normal(0, 1.5), K-1, K)
+    gamma3 ~ filldist(Normal(0, 1.5), K-1, K)
     init ~ Dirichlet(ones(K))
 
     gamma = cat(gamma1, gamma2, gamma3, dims = 3) # [(K-1) x K x D] 
