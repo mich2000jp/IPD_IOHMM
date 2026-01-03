@@ -309,7 +309,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     df_gq = leftjoin(df_summary_gq, df_hpd_gq, on = :parameters)
     df_stacked = vcat(df, df_gq)
     display(df_stacked)
-    CSV.write(SUMMARY_PATH, df_stacked)
+    CSV.write(SUMMARY_PATH, df_stacked, delim = ';')
 
     println("Plotting MCMC Results...")
     p1 = posterior_plot(chain_relabeled, K_states)
@@ -321,7 +321,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     loo = RunPSISLOO(model, chain_relabeled, PARATO_PATH)
     df_loo =DataFrame(loo.estimates)
     df_loo = unstack(df_loo, :statistic, :column, :value)
-    CSV.write(LOO_PATH, df_loo)
+    CSV.write(LOO_PATH, df_loo, delim = ';')
 
     println("All done!")
 end
