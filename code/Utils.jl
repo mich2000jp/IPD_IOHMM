@@ -235,7 +235,7 @@ function gq_to_loglik_array(gq)
 end
 
 # Run PSIS-LOOCV and report pareto k diagnostics
-function RunPSISLOO(model, chain)
+function RunPSISLOO(model, chain, PARATO_PATH)
     gq = generated_quantities(model, chain)
     log_lik = gq_to_loglik_array(gq)
     psis_result = psis_loo(log_lik)
@@ -256,6 +256,19 @@ function RunPSISLOO(model, chain)
         end
     end
     
+    p = histogram(
+    pareto_k;
+    bins = :auto,
+    xlabel = "Pareto k",
+    ylabel = "Frequency",
+    title = "PSIS-LOO Pareto k diagnostics"
+    )
+    vline!(
+        [0.5, 0.7, 1.0],
+        linestyle = :dash,
+    )
+    savefig(p, PARATO_PATH)
+
     return psis_result 
 end
 
@@ -278,6 +291,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     LOO_PATH      = OUTPUT_PATH[2]
     PLOT_PATH     = OUTPUT_PATH[3]
     PLOT_GQ_PATH  = OUTPUT_PATH[4]
+    PARATO_PATH   = OUTPUT_PATH[5]
 
     println("relabeling states...")
     chain_relabeled = relabel_chain(chain, K_states)
@@ -304,7 +318,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     savefig(p2, PLOT_GQ_PATH)
 
     println("PSIS-LOO Calculation...")
-    loo = RunPSISLOO(model, chain_relabeled)
+    loo = RunPSISLOO(model, chain_relabeled, PARATO_PATH)
     df_loo =DataFrame(loo.estimates)
     df_loo = unstack(df_loo, :statistic, :column, :value)
     CSV.write(LOO_PATH, df_loo)
@@ -493,7 +507,7 @@ function plot_conditional_coop(data::ExperimentData;
             ratio[i, :];
             label = histories[i],
             linewidth = 2,
-            fill = (0, 0.15, :auto)
+            fill = (0, 0.12, :auto)
         )
     end
 
