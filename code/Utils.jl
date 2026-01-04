@@ -50,7 +50,7 @@ function RunMCMC(SEED, model, K_states, sampler, n_iter, n_chains, n_burnin, out
     return chain
 end
 
-# Relabel MCMC chain to address label switching, based on 'init' parameter
+# Relabel MCMC chain to address label switching, based on 'beta0' parameter
 function relabel_chain(chain, K::Int=2)
     if K <= 1
         return chain
@@ -60,93 +60,86 @@ function relabel_chain(chain, K::Int=2)
     n_iter = size(chain, 1)
     n_chains = size(chain, 3)
     n_params = length(param_names)
-
-    # init_means[ch, k]
-    init_means = zeros(n_chains, K)
-    for ch in 1:n_chains
-        for k in 1:K
-            init_means[ch, k] = mean(chain[:,Symbol("init[$k]"),ch])
-        end
-    end
+    
+    beta0_indices = [findfirst(==(Symbol("beta0[$k]")), param_names) for k in 1:K]
     
     relabeled_array = zeros(n_iter, n_params, n_chains)
 
     for ch in 1:n_chains
-        inv_perm = sortperm(init_means[ch, :], rev=true)        
-        if inv_perm == collect(1:K)
-            relabeled_array[:, :, ch] .= chain.value.data[:, :, ch]
-            continue
-        end
-
-        # 各パラメータを並び替え
-        for (param_idx, param_name) in enumerate(param_names)
-            param_str = string(param_name)
+        for iter in 1:n_iter
             
-            # set default
-            relabeled_array[:, param_idx, ch] .= chain[:, param_idx, ch]
+            # get permutation based on beta0 values
+            beta0_vals = [chain[iter, beta0_indices[k], ch] for k in 1:K]
+            inv_perm = sortperm(beta0_vals, rev=true)
             
-            
-
-            # 1-d parameters: param[k] : init[k], beta0[k]
-            m = match(r"^(\w+)\[(\d+)\]$", param_str)
-            if !isnothing(m)
-                base_name = m.captures[1]
-                k = parse(Int, m.captures[2])
+            # Relabel each parameter
+            for (param_idx, param_name) in enumerate(param_names)
+                param_str = string(param_name)
                 
-                if k <= K
-                    old_k = inv_perm[k]
-                    old_param_name = Symbol("$(base_name)[$old_k]")
-                    old_idx = findfirst(==(old_param_name), param_names)
+                # Set default value
+                relabeled_array[iter, param_idx, ch] = chain[iter, param_idx, ch]
+                
+                # 1-d parameters: param[k] : init[k], beta0[k]
+                m = match(r"^(\w+)\[(\d+)\]$", param_str)
+                if !isnothing(m)
+                    base_name = m.captures[1]
+                    k = parse(Int, m.captures[2])
                     
-                    if !isnothing(old_idx)
-                        relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+                    if k <= K
+                        old_k = inv_perm[k]
+                        old_param_name = Symbol("$(base_name)[$old_k]")
+                        old_idx = findfirst(==(old_param_name), param_names)
+                        
+                        if !isnothing(old_idx)
+                            relabeled_array[iter, param_idx, ch] = chain[iter, old_idx, ch]
+                        end
                     end
                 end
-
-            end
-            
-            # 2-d parameters:
-            m = match(r"^(\w+)\[(\d+), \s*(\d+)\]$", param_str)
-            if !isnothing(m)
-                base_name = m.captures[1]
-                i = parse(Int, m.captures[2])
-                j = parse(Int, m.captures[3])
                 
-                # beta[d, k]
-                if base_name == "beta"
-                    old_i = i
-                    old_j = inv_perm[j]
-                    old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
-                    old_idx = findfirst(==(old_param_name), param_names)
+                # 2-d parameters:
+                m = match(r"^(\w+)\[(\d+),\s*(\d+)\]$", param_str)
+                if !isnothing(m)
+                    base_name = m.captures[1]
+                    i = parse(Int, m.captures[2])
+                    j = parse(Int, m.captures[3])
                     
-                    if !isnothing(old_idx)
-                        relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
-                    end
-
-                # trans[from, to], gammaX[from, to]
-                elseif base_name == "trans"
-                    old_i = inv_perm[i]
-                    old_j = inv_perm[j]
-                    old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
-                    old_idx = findfirst(==(old_param_name), param_names)
+                    # beta[d, k]
+                    if base_name == "beta"
+                        old_i = i
+                        old_j = inv_perm[j]
+                        old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+                        old_idx = findfirst(==(old_param_name), param_names)
+                        
+                        if !isnothing(old_idx)
+                            relabeled_array[iter, param_idx, ch] = chain[iter, old_idx, ch]
+                        end
                     
-                    if !isnothing(old_idx)
-                        relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
-                    end
-                elseif base_name in ["gamma0", "gamma1", "gamma2", "gamma3"]
-                    old_i = i
-                    old_j = inv_perm[j]
-                    old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
-                    old_idx = findfirst(==(old_param_name), param_names)
+                    # trans[from, to], gammaX[from, to]
+                    elseif base_name == "trans"
+                        old_i = inv_perm[i]
+                        old_j = inv_perm[j]
+                        old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+                        old_idx = findfirst(==(old_param_name), param_names)
+                        
+                        if !isnothing(old_idx)
+                            relabeled_array[iter, param_idx, ch] = chain[iter, old_idx, ch]
+                        end
                     
-                    if !isnothing(old_idx)
-                        relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+                    elseif base_name in ["gamma0", "gamma1", "gamma2", "gamma3"]
+                        old_i = i
+                        old_j = inv_perm[j]
+                        old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+                        old_idx = findfirst(==(old_param_name), param_names)
+                        
+                        if !isnothing(old_idx)
+                            relabeled_array[iter, param_idx, ch] = chain[iter, old_idx, ch]
+                        end
                     end
                 end
             end
-
         end
     end
+    
     new_chain = Chains(
         relabeled_array,
         param_names,
@@ -155,6 +148,111 @@ function relabel_chain(chain, K::Int=2)
     )
     return new_chain
 end
+
+# function relabel_chain(chain, K::Int=2)
+#     if K <= 1
+#         return chain
+#     end
+
+#     param_names = names(chain)
+#     n_iter = size(chain, 1)
+#     n_chains = size(chain, 3)
+#     n_params = length(param_names)
+
+#     # init_means[ch, k]
+#     init_means = zeros(n_chains, K)
+#     for ch in 1:n_chains
+#         for k in 1:K
+#             init_means[ch, k] = mean(chain[:,Symbol("beta0[$k]"),ch])
+#         end
+#     end
+    
+#     relabeled_array = zeros(n_iter, n_params, n_chains)
+
+#     for ch in 1:n_chains
+#         inv_perm = sortperm(init_means[ch, :], rev=true)        
+#         if inv_perm == collect(1:K)
+#             relabeled_array[:, :, ch] .= chain.value.data[:, :, ch]
+#             continue
+#         end
+
+#         # 各パラメータを並び替え
+#         for (param_idx, param_name) in enumerate(param_names)
+#             param_str = string(param_name)
+            
+#             # set default
+#             relabeled_array[:, param_idx, ch] .= chain[:, param_idx, ch]
+            
+            
+
+#             # 1-d parameters: param[k] : init[k], beta0[k]
+#             m = match(r"^(\w+)\[(\d+)\]$", param_str)
+#             if !isnothing(m)
+#                 base_name = m.captures[1]
+#                 k = parse(Int, m.captures[2])
+                
+#                 if k <= K
+#                     old_k = inv_perm[k]
+#                     old_param_name = Symbol("$(base_name)[$old_k]")
+#                     old_idx = findfirst(==(old_param_name), param_names)
+                    
+#                     if !isnothing(old_idx)
+#                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+#                     end
+#                 end
+
+#             end
+            
+#             # 2-d parameters:
+#             m = match(r"^(\w+)\[(\d+), \s*(\d+)\]$", param_str)
+#             if !isnothing(m)
+#                 base_name = m.captures[1]
+#                 i = parse(Int, m.captures[2])
+#                 j = parse(Int, m.captures[3])
+                
+#                 # beta[d, k]
+#                 if base_name == "beta"
+#                     old_i = i
+#                     old_j = inv_perm[j]
+#                     old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+#                     old_idx = findfirst(==(old_param_name), param_names)
+                    
+#                     if !isnothing(old_idx)
+#                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+#                     end
+
+#                 # trans[from, to], gammaX[from, to]
+#                 elseif base_name == "trans"
+#                     old_i = inv_perm[i]
+#                     old_j = inv_perm[j]
+#                     old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+#                     old_idx = findfirst(==(old_param_name), param_names)
+                    
+#                     if !isnothing(old_idx)
+#                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+#                     end
+#                 elseif base_name in ["gamma0", "gamma1", "gamma2", "gamma3"]
+#                     old_i = i
+#                     old_j = inv_perm[j]
+#                     old_param_name = Symbol("$(base_name)[$old_i, $old_j]")
+#                     old_idx = findfirst(==(old_param_name), param_names)
+                    
+#                     if !isnothing(old_idx)
+#                         relabeled_array[:, param_idx, ch] .= chain[:, old_idx, ch]
+#                     end
+#                 end
+#             end
+
+#         end
+#     end
+#     new_chain = Chains(
+#         relabeled_array,
+#         param_names,
+#         (internals = chain.name_map[:internals],
+#          parameters = chain.name_map[:parameters]);
+#     )
+#     return new_chain
+# end
 
 # Convert generated quantities to Chains format
 function convert_gq(gq)
@@ -295,15 +393,24 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
 
     println("relabeling states...")
     chain_relabeled = relabel_chain(chain, K_states)
-
     println("generating quantities...")
     gq = generated_quantities(model_gq, chain_relabeled)
 
     chain_gq = convert_gq(gq)
     println("summarizing results...")
-    df_summary = DataFrame(summarystats(chain_relabeled))
+    if Symbol("gamma0[1, 1]") in names(chain_relabeled)
+        chain_view = replacenames(chain_relabeled, 
+        Symbol("gamma0[1, 1]") => Symbol("gamma0[2, 1]"),
+        Symbol("gamma1[1, 1]") => Symbol("gamma1[2, 1]"),
+        Symbol("gamma2[1, 1]") => Symbol("gamma2[2, 1]"),
+        Symbol("gamma3[1, 1]") => Symbol("gamma3[2, 1]"))
+    else
+        chain_view = chain_relabeled
+    end
+    
+    df_summary = DataFrame(summarystats(chain_view))
     df_summary_gq = DataFrame(summarystats(chain_gq))
-    df_hpd = DataFrame(MCMCChains.hpd(chain_relabeled, alpha=0.05))
+    df_hpd = DataFrame(MCMCChains.hpd(chain_view, alpha=0.05))
     df_hpd_gq = DataFrame(MCMCChains.hpd(chain_gq, alpha=0.05))
     df = leftjoin(df_summary, df_hpd, on = :parameters)
     df_gq = leftjoin(df_summary_gq, df_hpd_gq, on = :parameters)
@@ -312,7 +419,7 @@ function RunPostAnalysis(model_gq, chain::Chains, K_states, OUTPUT_PATH)
     CSV.write(SUMMARY_PATH, df_stacked, delim = ';')
 
     println("Plotting MCMC Results...")
-    p1 = posterior_plot(chain_relabeled, K_states)
+    p1 = posterior_plot(chain_view, K_states)
     p2 = posterior_plot(chain_gq, K_states)
     savefig(p1, PLOT_PATH)
     savefig(p2, PLOT_GQ_PATH)
