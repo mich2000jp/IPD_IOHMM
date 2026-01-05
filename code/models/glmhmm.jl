@@ -89,3 +89,113 @@
         return (; log_lik)
     end
 end
+
+@model function glmhmm_hierarchical(data::ExperimentData, K::Int; track::Bool = false)
+    T_len   = data.n_periods
+    N       = data.n_subjects
+    D       = data.d_cov
+
+    # =====================================================
+    # Priors - Population level
+    # =====================================================
+    # Population-level emission parameters
+    μ_beta0 ~ filldist(Normal(0, 1.5), K)
+    σ_beta0 ~ truncated(Normal(0, 0.5); lower=0)  # Single scalar for all K states
+    
+    beta1 ~ filldist(Normal(0, 1.5), K)
+    beta2 ~ filldist(Normal(0, 1.5), K)
+    beta3 ~ filldist(Normal(0, 1.5), K)
+    
+    # Shared transition and initial state parameters
+    trans ~ filldist(Dirichlet(K, 1.5), K)
+    init ~ Dirichlet(ones(K))
+    
+    # Pre-compute shared quantities
+    beta = hcat(beta1, beta2, beta3)
+    log_trans = log.(trans)
+    log_init = log.(init)
+    
+    # =====================================================
+    # Individual-level parameters (non-centered)
+    # =====================================================
+    β0_individual ~ filldist(Normal(0, 1), N, K)
+    
+    # =====================================================
+    # Likelihood
+    # =====================================================
+    Tp = eltype(μ_beta0)
+    log_lik = Vector{Tp}(undef, N)
+
+    log_alpha      = Vector{Tp}(undef, K)
+    log_alpha_next = Vector{Tp}(undef, K)
+    logits         = Vector{Tp}(undef, K)
+
+    for i in 1:N
+        y_seq = data.observations[i]
+        X_seq = data.covariates[i]
+        
+        # Individual-specific intercept
+        # β0_i = μ_beta0 .+ σ_beta0 .* view(β0_individual, i, :)
+
+        # t = 1: 
+        mul!(logits, beta, view(X_seq, 1, :))
+        @inbounds for k in 1:K
+            logits[k] += μ_beta0[k] + σ_beta0 * β0_individual[i, k]
+            le = y_seq[1] == 1 ?
+                -log1pexp(-logits[k]) :
+                -log1pexp( logits[k])
+            log_alpha[k] = log_init[k] + le
+        end
+
+        # t = 2,...,T
+        for t in 2:T_len
+            mul!(logits, beta, view(X_seq, t, :))
+            @inbounds for k in 1:K
+                logits[k] += μ_beta0[k] + σ_beta0 * β0_individual[i, k]
+            end
+            
+            @inbounds for k in 1:K
+                lp = manual_logsumexp(log_trans, k, log_alpha, K)
+                
+                le = y_seq[t] == 1 ?
+                    -log1pexp(-logits[k]) :
+                    -log1pexp( logits[k])
+                
+                log_alpha_next[k] = lp + le
+            end
+
+            log_alpha, log_alpha_next = log_alpha_next, log_alpha
+        end
+
+        ll = logsumexp(log_alpha)
+        log_lik[i] = ll
+        Turing.@addlogprob! ll
+    end
+
+    # =====================================================
+    # Generated quantities
+    # =====================================================
+    if track
+        x_dd = [0.0, 0.0, 0.0]
+        x_dc = [0.0, 1.0, 0.0]
+        x_cd = [1.0, 0.0, 0.0]
+        x_cc = [1.0, 1.0, 1.0]
+        
+        logit_dd = μ_beta0 .+ beta * x_dd
+        logit_dc = μ_beta0 .+ beta * x_dc
+        logit_cd = μ_beta0 .+ beta * x_cd
+        logit_cc = μ_beta0 .+ beta * x_cc
+
+        pdd = logistic.(logit_dd)
+        pdc = logistic.(logit_dc)
+        pcd = logistic.(logit_cd)
+        pcc = logistic.(logit_cc)
+        
+        return (;
+            pdd, pdc, pcd, pcc,
+            σ_beta0
+        )
+    else
+        return (; log_lik)
+    end
+end
